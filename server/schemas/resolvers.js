@@ -1,12 +1,18 @@
-const { User } = require("../models");
-const { signToken, AuthenticationError } = require("../utils/auth");
+const { User } = require('../models');
+const { signToken, AuthenticationError } = require('../utils/auth');
 
 const resolvers = {
   Query: {
-    me: async (parent, { username, _id }) => {
-      return await User.findOne({
-        $or: [{ _id: _id }, { username: username }],
-      });
+    me: async (parent, args, context) => {
+      if (context.user) {
+        const userData = await User.findOne({
+          _id: context.user._id,
+        }).select('-__v -password');
+
+        return userData;
+      }
+
+      throw AuthenticationError;
     },
   },
   Mutation: {
@@ -22,7 +28,7 @@ const resolvers = {
       const correctPw = await user.isCorrectPassword(password);
 
       if (!correctPw) {
-        return { message: "Wrong Password!" };
+        return { message: 'Wrong Password!' };
       }
 
       const token = signToken(user);
@@ -38,16 +44,21 @@ const resolvers = {
       const token = signToken(user);
       return { user, token };
     },
-    saveBook: async (parent, { bookData }, context) => {
+    saveBook: async (parent, { input }, context) => {
+      if (context.user) {
+        const updatedUser = await User.findByIdAndUpdate(
+          { _id: context.user._id },
+          { $addToSet: { savedBooks: input } },
+          { new: true }
+        );
+        return updatedUser;
+      }
+
+      throw AuthenticationError;
+    },
+    removeBook: async (parent, { bookId }, context) => {
       return await User.findOneAndUpdate(
         { _id: context.user._id },
-        { $addToSet: { savedBooks: bookData } },
-        { new: true }
-      );
-    },
-    removeBook: async (parent, { _id, bookId }) => {
-      return await User.findOneAndUpdate(
-        { _id: _id },
         { $pull: { savedBooks: { bookId: bookId } } },
         { new: true }
       );
